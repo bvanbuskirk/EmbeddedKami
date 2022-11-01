@@ -1,0 +1,7 @@
+# request type
+ros_stuff/RobotCmd robot_cmd
+string name
+---
+# response type
+string name
+float64 time

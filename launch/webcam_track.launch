@@ -1,0 +1,70 @@
+<launch>
+
+	<arg name="video_device"		default="/dev/video2" />
+	<arg name="image_width"			default="1920" />
+	<arg name="image_height"		default="1080" />
+	<arg name="framerate"		    default="60" />
+
+	<node name="usb_cam" pkg="usb_cam" type="usb_cam_node">
+	    <param name="video_device" value="$(arg video_device)" />
+		<param name="image_width" value="$(arg image_width)" />
+	    <param name="image_height" value="$(arg image_height)" />
+		<param name="framerate" value="$(arg framerate)" />
+	    <!-- <param name="pixel_format" value="yuyv" /> -->
+		<param name="pixel_format" value="mjpeg" />
+	    <param name="camera_frame_id" value="usb_cam" />
+	    <param name="io_method" value="mmap"/>
+  	</node>
+
+	<!-- Video resizing -->
+	<node name="resize_img" pkg="nodelet" type="nodelet" args="standalone image_proc/resize">
+		<!-- remap input topics -->
+		<remap from="camera_image" to="/usb_cam/image_raw"/>
+		<remap from="camera_info" to="/usb_cam/camera_info"/>
+	</node>
+
+	<!-- Dynamic reconfigure the resizing nodelet -->
+	<node name="$(anon dynparam)" pkg="dynamic_reconfigure" type="dynparam" args="set_from_parameters resize_img">
+		<param name="use_scale" type="int" value="0" />
+		<param name="width" type="int" value="$(arg image_width)" />
+		<param name="height" type="int" value="$(arg image_height)" />
+	</node>
+
+	<node name="image_proc" pkg="image_proc" type="image_proc" ns="usb_cam">
+		<param name="queue_size"			value="1" />
+	</node>
+
+	<arg name="marker_size"          default="10.9" />
+    <arg name="max_new_marker_error" default="0.02" />
+    <arg name="max_track_error"      default="0.02" />
+
+    <arg name="cam_image_topic"      default="/usb_cam/image_rect" />
+    <arg name="cam_info_topic"       default="/resize_img/camera_info" />
+    <arg name="output_frame"         default="/usb_cam" />
+
+    <node name="ar_track_alvar" pkg="ar_track_alvar" type="individualMarkersNoKinect" respawn="false" output="screen">
+		<param name="marker_size"           type="double" value="$(arg marker_size)" />
+		<param name="max_new_marker_error"  type="double" value="$(arg max_new_marker_error)" />
+		<param name="max_track_error"       type="double" value="$(arg max_track_error)" />
+		<param name="output_frame"          type="string" value="$(arg output_frame)" />
+		<param name="max_frequency" 		type="double" value="$(arg framerate)" />
+
+		<remap from="camera_image"  to="$(arg cam_image_topic)" />
+		<remap from="camera_info"   to="$(arg cam_info_topic)" />
+	</node>
+
+	<node name="rviz" type="rviz" pkg="rviz" args="-d $(find ros_stuff)/rviz/default.rviz">
+	</node>
+
+	<arg name="robot_id"         	default="2" />
+    <arg name="object_id" 		 	default="-1" />
+	<arg name="base_id"          	default="3" />
+    <arg name="corner_id" 	     	default="4" />
+
+	<node name="state_publisher" pkg="ros_stuff" type="state_publisher.py" output="screen">
+		<param name="robot_id"           type="int" value="$(arg robot_id)" />
+		<param name="object_id"          type="int" value="$(arg object_id)" />
+		<param name="base_id"       	 type="int" value="$(arg base_id)" />
+		<param name="corner_id"          type="int" value="$(arg corner_id)" />
+	</node>
+</launch>

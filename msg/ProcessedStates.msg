@@ -1,0 +1,5 @@
+Header header
+SingleState robot_state
+SingleState object_state
+SingleState corner_state
+bool moving
