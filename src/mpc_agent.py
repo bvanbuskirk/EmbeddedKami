@@ -9,7 +9,7 @@ from utils import DataUtils, signed_angle_difference, dimensions
 
 
 class MPCAgent:
-    def __init__(self, seed=1, mpc_method='mppi', hidden_dim=200, hidden_depth=2, lr=0.001,
+    def __init__(self, seed=1, mpc_method='mppi', sensory_model=False, hidden_dim=200, hidden_depth=2, lr=0.001,
                  std=0.01, dist=True, scale=True, ensemble=1, use_object=False,
                  action_range=None, mpc_params=None, cost_weights_dict=None, device=torch.device("cpu")):
         assert ensemble > 0
@@ -38,6 +38,13 @@ class MPCAgent:
             policy = RandomShootingPolicy
         else:
             raise NotImplementedError
+
+        if sensory_model:
+            sensory_in = dimensions["sensory_input_dim"]
+            sensory_out = output_dim
+            self.state_estimator = DynamicsNetwork(sensory_in, sensory_out, self.dtu, hidden_dim=hidden_dim, hidden_depth=hidden_depth,
+                                       lr=lr, std=std, dist=dist, use_object=use_object, scale=scale)
+
         self.policy = policy(action_range=action_range, simulate_fn=self.simulate, cost_fn=self.compute_costs,
                              params=mpc_params, cost_weights_dict=cost_weights_dict)
 
@@ -59,6 +66,8 @@ class MPCAgent:
         state_sequence = np.empty((len(self.models), n_samples, horizon, self.state_dim))
 
         for i, model in enumerate(self.models):
+            model.eval()
+
             for t in range(horizon):
                 action = action_sequence[:, t]
                 with torch.no_grad():
@@ -67,9 +76,9 @@ class MPCAgent:
                     else:
                         state_sequence[i, :, t] = model(state_sequence[i, :, t-1], action, sample=False, delta=False)
 
-        if n_samples > 1:
-            if np.linalg.norm(state_sequence[0, 0] - state_sequence[0, 1]) == 0:
-                import pdb;pdb.set_trace()
+        # if n_samples > 1:
+        #     if np.linalg.norm(state_sequence[0, 0] - state_sequence[0, 1]) == 0:
+        #         import pdb;pdb.set_trace()
 
         return state_sequence
 

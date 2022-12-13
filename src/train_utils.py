@@ -17,7 +17,7 @@ AGENT_PATH = "/home/bvanbuskirk/Desktop/experiments/agent.pkl"
 
 def train_from_buffer(agent, replay_buffer, validation_buffer=None, pretrain=False, consecutive=False, pretrain_samples=500,
                      save_agent=False, train_epochs=100, use_all_data=False, batch_size=500, meta=False):
-    if pretrain:
+    if pretrain or consecutive:
         n_samples = min(pretrain_samples, replay_buffer.size)
 
         if consecutive:
@@ -53,41 +53,44 @@ def train_from_buffer(agent, replay_buffer, validation_buffer=None, pretrain=Fal
 
     if validation_buffer is not None:
         val_state, val_action, val_next_state = validation_buffer.sample(validation_buffer.capacity)
-        val_state_delta = agent.dtu.compute_relative_delta_xysc(val_state, val_next_state)
-        val_state, val_action, val_next_state = as_tensor(val_state, val_action, val_next_state)
+    else:
+        val_state, val_action, val_next_state = states, actions, next_states
 
-        with torch.no_grad():
-            agent.models[-1].eval()
-            pred_state_delta = agent.models[-1](val_state, val_action, sample=False, delta=True)
+    val_state_delta = agent.dtu.compute_relative_delta_xysc(val_state, val_next_state)
+    val_state, val_action, val_next_state = as_tensor(val_state, val_action, val_next_state)
 
-        error = abs(pred_state_delta - val_state_delta)
-        print("\nERROR MEAN:", error.mean(axis=0))
-        print("ERROR STD:", error.std(axis=0))
-        print("ERROR MAX:", error.max(axis=0)[0])
-        print("ERROR MIN:", error.min(axis=0)[0])
+    with torch.no_grad():
+        agent.models[-1].eval()
+        pred_state_delta = agent.models[-1](val_state, val_action, sample=False, delta=True)
 
-        diffs = abs(val_state_delta)
-        print("\nACTUAL MEAN:", diffs.mean(axis=0))
-        print("ACTUAL STD:", diffs.std(axis=0))
+    error = abs(pred_state_delta - val_state_delta)
+    print("\nERROR MEAN:", error.mean(axis=0))
+    print("ERROR STD:", error.std(axis=0))
+    print("ERROR MAX:", error.max(axis=0)[0])
+    print("ERROR MIN:", error.min(axis=0)[0])
 
-        fig, axes = plt.subplots(1, 4)
-        axes[0].plot(np.arange(len(training_losses)), training_losses, label="Training Loss")
-        axes[1].plot(np.arange(-1, len(test_losses)-1), test_losses, label="Test Loss")
+    diffs = abs(val_state_delta)
+    print("\nACTUAL MEAN:", diffs.mean(axis=0))
+    print("ACTUAL STD:", diffs.std(axis=0))
 
-        axes[0].set_yscale('log')
-        axes[1].set_yscale('log')
+    fig, axes = plt.subplots(1, 4)
+    axes[0].plot(np.arange(len(training_losses)), training_losses, label="Training Loss")
+    axes[1].plot(np.arange(-1, len(test_losses)-1), test_losses, label="Test Loss")
 
-        axes[0].set_title('Training Loss')
-        axes[1].set_title('Test Loss')
+    axes[0].set_yscale('log')
+    axes[1].set_yscale('log')
 
-        for ax in axes:
-            ax.grid()
+    axes[0].set_title('Training Loss')
+    axes[1].set_title('Test Loss')
 
-        axes[0].set_ylabel('Loss')
-        axes[1].set_xlabel('Epoch')
-        fig.set_size_inches(15, 5)
+    for ax in axes:
+        ax.grid()
 
-        plt.show()
+    axes[0].set_ylabel('Loss')
+    axes[1].set_xlabel('Epoch')
+    fig.set_size_inches(15, 5)
+
+    plt.show()
 
 def train(agent, state, action, next_state, validation_buffer=None, epochs=5, batch_size=256, set_scalers=False,
           use_all_data=False, meta=False):

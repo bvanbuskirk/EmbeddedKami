@@ -6,6 +6,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 import pickle as pkl
 import csv
+import wandb
+from datetime import datetime
 
 
 class Logger:
@@ -16,6 +18,14 @@ class Logger:
                 exp_name += f"_pretrain{experiment.pretrain_samples}"
             if experiment.online:
                 exp_name += "_online"
+
+        date = datetime.now().strftime("%m%d%Y")
+        wandb.init(project=date, entity="kamigami", id=exp_name)
+        wandb.define_metric("distance", summary="mean")
+        wandb.define_metric("heading", summary="mean")
+        wandb.define_metric("robot_dist_error", summary="mean")
+        wandb.define_metric("robot_heading_error", summary="mean")
+
 
         self.exp_path = f"/home/bvanbuskirk/Desktop/experiments/{'object' if experiment.use_object else 'robot'}/{exp_name}/"
         self.buffer_path = "/home/bvanbuskirk/Desktop/experiments/buffers/"
@@ -31,6 +41,9 @@ class Logger:
         self.robot_states = []
         self.object_states = []
         self.goal_states = []
+        self.robot_model_errors = []
+        self.object_model_errors = []
+        self.model_errors = {"robot_model_error" : [], "object_model_error" : []}
 
         self.use_object = experiment.use_object
         self.plot = plot
@@ -94,6 +107,76 @@ class Logger:
 
         if self.plot:
             self.plot_states(save=False)
+
+    def log_model_errors(self, error, object=False):
+        if object:
+            assert self.use_object
+            self.robot_model_errors.append(error)
+        else:
+            self.object_model_errors.append(error)
+        return self.model_errors
+
+    def reset_model_errors(self):
+        self.robot_model_errors = []
+        self.object_model_errors = []
+
+    def plot_model_errors(self):
+        robot_dist_errors, robot_dist_norm_errors, robot_heading_errors, robot_heading_norm_errors = np.array(self.robot_model_errors).T
+
+        plt.figure()
+        plt.hist(robot_dist_errors[robot_dist_errors < 0.03] * 100, bins=15)
+        plt.title("Robot XY Prediction Error, PDF")
+        plt.xlabel("Prediction Error (cm)")
+
+        plt.figure()
+        plt.hist(robot_dist_errors * 100, density=True, cumulative=True, bins=15)
+        plt.title("Robot XY Prediction Error, CDF")
+        plt.xlabel("Prediction Error (cm)")
+
+        # plt.figure()
+        # plt.hist(robot_dist_norm_errors, density=True, cumulative=True, bins=15)
+        # plt.title("Robot XY Prediction Error per Distance Travelled, CDF")
+        # plt.xlabel("Normalized Error (cm/cm)")
+
+        # plt.figure()
+        # plt.hist(robot_dist_norm_errors[robot_dist_norm_errors < 1], density=True, cumulative=True, bins=15)
+        # plt.title("Robot XY Prediction Error per Distance Travelled, Zoomed CDF")
+        # plt.xlabel("Normalized Error (cm/cm)")
+
+        plt.figure()
+        plt.hist(np.abs(robot_heading_errors * 180 / np.pi), density=True, cumulative=True, bins=15)
+        plt.title("Robot Absolute Heading Prediction Error, CDF")
+        plt.xlabel("Prediction Error (deg)")
+
+        # plt.figure()
+        # plt.hist(robot_heading_norm_errors, density=True, cumulative=True, bins=15)
+        # plt.title("Robot Absolute Heading Prediction Error Normalized, CDF")
+        # plt.xlabel("Normalized Error (deg/deg)")
+
+        # plt.figure()
+        # plt.hist(robot_heading_norm_errors[robot_heading_norm_errors < 1], density=True, cumulative=True, bins=15)
+        # plt.title("Robot Absolute Heading Prediction Error Normalized, Zoomed CDF")
+        # plt.xlabel("Normalized Error (deg/deg)")
+
+        plt.figure()
+        plt.hist(robot_heading_errors * 180 / np.pi, bins=15)
+        plt.title("Robot Signed Heading Prediction Error, PDF")
+        plt.xlabel("Prediction Error (deg)")
+
+        import pdb;pdb.set_trace()
+
+        if self.use_object:
+            object_dist_errors, object_dist_norm_errors, object_heading_errors = np.array(self.model_errors["object_model_error"]).T
+
+            plt.figure()
+            plt.hist(object_dist_errors * 100)
+            plt.title("Object XY Prediction Error Distribution")
+            plt.xlabel("Prediction Error (cm)")
+
+            plt.figure()
+            plt.hist(object_heading_errors * 180 / np.pi)
+            plt.title("Object Heading Prediction Error Distribution")
+            plt.xlabel("Prediction Error (deg)")
 
     def dump_agent(self, agent, laps, replay_buffer):
         with open(self.agent_path + f"lap{laps}_rb{replay_buffer.size}.npy", "wb") as f:

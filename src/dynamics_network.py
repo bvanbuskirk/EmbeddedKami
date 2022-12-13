@@ -3,6 +3,7 @@
 import torch
 from torch import nn
 from torch.nn import functional as F
+from pdb import set_trace
 
 from utils import as_tensor, dcn
 
@@ -88,6 +89,68 @@ class DynamicsNetwork(nn.Module):
         next_states_model = self.dtu.next_state_from_relative_delta(states, state_deltas_model)
         return next_states_model
 
+    def forward_with_imu(self, states, imu_data, return_dist=False, delta=False, state_estimates=None):
+        states, state_estimates = as_tensor(states, state_estimates)
+
+        if state_estimates is not None:
+            states = torch.cat((states, state_estimates), 0).float()
+
+        if len(states.shape) == 1:
+            states = states[None, :]
+        if len(actions.shape) == 1:
+            actions = actions[None, :]
+
+        # state comes in as (x, y, theta)
+        input_states = self.dtu.state_to_model_input(states)
+        if input_states is None:
+            inputs = actions.float()
+        else:
+            inputs = torch.cat([input_states, actions], dim=1).float()
+
+        if self.scale:
+            inputs = self.standardize_input(inputs)
+
+        outputs = self.net(inputs)
+
+        if self.dist:
+            mean = outputs
+            std = torch.ones_like(mean) * self.std
+            dist = torch.distributions.normal.Normal(mean, std)
+            if return_dist:
+                return dist
+            state_deltas_model = mean
+        else:
+            state_deltas_model = outputs
+
+        if self.scale:
+            state_deltas_model = self.unstandardize_output(state_deltas_model)
+
+        if delta:
+            return state_deltas_model
+
+        next_states_model = self.dtu.next_state_from_relative_delta(states, state_deltas_model)
+        return next_states_model
+
+    def update_imu_model(self, state, imu_data, next_state):
+        self.train()
+        state, imu_data, next_state = as_tensor(state, imu_data, next_state)
+        state_delta = self.dtu.compute_relative_delta_xysc(state, next_state)
+
+        if self.dist:
+            if self.scale:
+                state_delta = self.standardize_output(state_delta)
+            dist = self.forward_with_imu(state, imu_data, return_dist=True)
+            loss = -dist.log_prob(state_delta.detach()).mean()
+        else:
+            pred_state_delta = self.forward_with_imu(state, imu_data, return_dist=True)
+            loss = F.mse_loss(pred_state_delta, state_delta, reduction='mean')
+
+        self.optimizer.zero_grad()
+        loss.backward()
+        self.optimizer.step()
+
+        return dcn(loss)
+
     def update(self, state, action, next_state):
         self.train()
         state, action, next_state = as_tensor(state, action, next_state)
@@ -114,11 +177,11 @@ class DynamicsNetwork(nn.Module):
         state_delta = self.dtu.compute_relative_delta_xysc(state, next_state)
 
         # chunk into "tasks" i.e. batches continuous in time
-        tasks = 40
-        task_steps = 30
-        meta_update_steps = 3
+        tasks = 10
+        task_steps = 20
+        meta_update_steps = 2
 
-        first_idxs = torch.randint(len(state) - 2 * task_steps + 1, (tasks,))
+        first_idxs = torch.randint(len(state) - 2 * task_steps + 1, size=(tasks,))
         tiled_first_idxs = first_idxs.reshape(-1, 1).repeat(1, task_steps)
         all_idxs = tiled_first_idxs + torch.arange(task_steps)
 
@@ -163,6 +226,7 @@ class DynamicsNetwork(nn.Module):
 
         # update network
         self.optimizer.zero_grad()
+        # loss.backward()
         loss.backward(retain_graph=True)
         self.optimizer.step()
 
@@ -178,13 +242,13 @@ class DynamicsNetwork(nn.Module):
         input_state = self.dtu.state_to_model_input(state)
 
         if input_state is None:
-            input = action
+            inp = action
         else:
-            input = torch.cat([input_state, action], axis=1)
+            inp = torch.cat([input_state, action], axis=1)
         state_delta = self.dtu.compute_relative_delta_xysc(state, next_state)
 
-        self.input_mean = input.mean(dim=0)
-        self.input_std = input.std(dim=0)
+        self.input_mean = inp.mean(dim=0)
+        self.input_std = inp.std(dim=0)
 
         self.output_mean = state_delta.mean(dim=0)
         self.output_std = state_delta.std(dim=0)

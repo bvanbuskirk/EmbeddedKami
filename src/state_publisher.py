@@ -22,7 +22,6 @@ class StatePublisher:
 
         self.base_id = base_id
         self.base_frame = f"ar_marker_{base_id}"
-        self.robot_frame = f"ar_marker_{robot_id}"
         self.name_to_id = {"robot": robot_id,
                            "object": object_id,
                            "base": base_id,

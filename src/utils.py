@@ -53,12 +53,13 @@ def rotate_vectors(vectors, angle):
     rotated_vector = (rotation @ vectors[:, :, None]).squeeze(dim=-1)
     return rotated_vector
 
-def build_action_request(action, duration):
-    action_req = RobotCmd()
-    action_req.left_pwm = action[0]
-    action_req.right_pwm = action[1]
-    action_req.duration = duration
-    return action_req
+def build_action_msg(action, duration, action_num):
+    action_msg = RobotCmd()
+    action_msg.left_pwm = action[0]
+    action_msg.right_pwm = action[1]
+    action_msg.duration = duration
+    action_msg.action_num = action_num
+    return action_msg
 
 
 class DataUtils:

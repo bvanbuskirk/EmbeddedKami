@@ -30,7 +30,9 @@ class MPCPolicy:
             ensemble_costs += cost_dict[cost_type] * self.cost_weights_dict[cost_type]
 
         # discount costs through time
-        discount = (1 - 1 / (4 * horizon)) ** np.arange(horizon)
+        # discount = (1 - 1 / (4 * horizon)) ** np.arange(horizon)
+
+        discount = 0.75 ** np.arange(horizon)
         ensemble_costs *= discount[None, None, :]
 
         # average over ensemble and horizon dimensions to get per-sample cost
